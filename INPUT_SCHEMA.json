@@ -1,0 +1,29 @@
+{
+    "title": "Jula Scraper Input",
+    "type": "object",
+    "schemaVersion": 1,
+    "properties": {
+        "keyword": {
+            "title": "Søkeord",
+            "type": "string",
+            "description": "Filtrer produkter som inneholder dette ordet i URL/navn",
+            "editor": "textfield",
+            "default": ""
+        },
+        "maxProducts": {
+            "title": "Maks antall produkter",
+            "type": "integer",
+            "description": "Begrens antall produkter å scrape",
+            "default": 50,
+            "minimum": 1,
+            "maximum": 1000
+        },
+        "category": {
+            "title": "Kategori-filter",
+            "type": "string",
+            "description": "F.eks. 'veggfester-og-mobler' eller 'verksted'",
+            "editor": "textfield",
+            "default": ""
+        }
+    }
+}

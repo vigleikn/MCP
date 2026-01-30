@@ -1,0 +1,24 @@
+{
+    "actorSpecification": 1,
+    "name": "jula-sitemap-scraper",
+    "title": "Jula Sitemap Scraper",
+    "description": "Scraper som henter produkter fra Jula via sitemaps (respekterer robots.txt)",
+    "version": "1.0.0",
+    "buildTag": "latest",
+    "input": "./INPUT_SCHEMA.json",
+    "dockerfile": "./Dockerfile",
+    "storages": {
+        "dataset": {
+            "actorSpecification": 1,
+            "title": "Jula Products",
+            "views": {
+                "products": {
+                    "title": "Products",
+                    "transformation": {
+                        "fields": ["name", "brand", "price", "url", "articleNumber"]
+                    }
+                }
+            }
+        }
+    }
+}
