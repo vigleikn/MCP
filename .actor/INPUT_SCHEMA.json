@@ -3,20 +3,34 @@
     "type": "object",
     "schemaVersion": 1,
     "properties": {
+        "searchOnly": {
+            "title": "Søk i cache (instant)",
+            "type": "boolean",
+            "description": "Søk i cached produktdata uten scraping. Krever at du har kjørt indeksering først.",
+            "default": false,
+            "groupCaption": "Modus",
+            "groupDescription": "Velg hvordan scraperen skal kjøre"
+        },
+        "fullIndex": {
+            "title": "Full indeksering",
+            "type": "boolean",
+            "description": "Scrape ALLE produkter fra Jula (tar flere timer). Ignorer maxProducts.",
+            "default": false
+        },
+        "updateOnly": {
+            "title": "Kun oppdater nye",
+            "type": "boolean",
+            "description": "Scrape kun produkter som ikke finnes i cache.",
+            "default": false
+        },
         "keyword": {
             "title": "Søkeord",
             "type": "string",
-            "description": "Filtrer produkter som inneholder dette ordet i URL/navn",
+            "description": "Filtrer produkter som inneholder dette ordet",
             "editor": "textfield",
-            "default": ""
-        },
-        "maxProducts": {
-            "title": "Maks antall produkter",
-            "type": "integer",
-            "description": "Begrens antall produkter å scrape",
-            "default": 50,
-            "minimum": 1,
-            "maximum": 1000
+            "default": "",
+            "groupCaption": "Filter",
+            "groupDescription": "Filtrer hvilke produkter som skal hentes/søkes"
         },
         "category": {
             "title": "Kategori-filter",
@@ -24,6 +38,14 @@
             "description": "F.eks. 'veggfester-og-mobler' eller 'verksted'",
             "editor": "textfield",
             "default": ""
+        },
+        "maxProducts": {
+            "title": "Maks antall produkter",
+            "type": "integer",
+            "description": "Begrens antall produkter (ignoreres ved fullIndex)",
+            "default": 50,
+            "minimum": 1,
+            "maximum": 30000
         }
     }
 }

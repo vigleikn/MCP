@@ -15,9 +15,67 @@ if (typeof input === 'string') {
     }
 }
 
-const { keyword = '', maxProducts = 50, category = '' } = input;
+const { 
+    keyword = '', 
+    maxProducts = 50, 
+    category = '',
+    fullIndex = false,      // Kjør full indeksering av alle produkter
+    updateOnly = false,     // Kun oppdater nye produkter (sjekk mot cache)
+    searchOnly = false,     // Søk i cached data uten scraping
+} = input;
 
-console.log(`Starting Jula scraper - keyword: "${keyword}", maxProducts: ${maxProducts}, category: "${category}"`);
+console.log(`Starting Jula scraper`);
+console.log(`  Mode: ${fullIndex ? 'FULL INDEX' : updateOnly ? 'UPDATE ONLY' : searchOnly ? 'SEARCH ONLY' : 'FILTERED SCRAPE'}`);
+console.log(`  keyword: "${keyword}", maxProducts: ${maxProducts}, category: "${category}"`);
+
+// Key-Value Store for caching
+const kvStore = await Actor.openKeyValueStore('jula-products');
+
+// Hvis searchOnly, søk i cached data og avslutt
+if (searchOnly) {
+    console.log('\n=== SEARCH MODE ===');
+    const cachedProducts = await kvStore.getValue('all-products') || [];
+    console.log(`Loaded ${cachedProducts.length} products from cache`);
+    
+    let results = cachedProducts;
+    
+    if (keyword) {
+        const kwLower = keyword.toLowerCase();
+        results = results.filter(p => 
+            p.name?.toLowerCase().includes(kwLower) ||
+            p.description?.toLowerCase().includes(kwLower) ||
+            p.brand?.toLowerCase().includes(kwLower) ||
+            p.categories?.some(c => c.toLowerCase().includes(kwLower)) ||
+            JSON.stringify(p.features || []).toLowerCase().includes(kwLower) ||
+            JSON.stringify(p.specs || {}).toLowerCase().includes(kwLower)
+        );
+        console.log(`After keyword search: ${results.length} matches`);
+    }
+    
+    if (category) {
+        const catLower = category.toLowerCase();
+        results = results.filter(p => 
+            p.categories?.some(c => c.toLowerCase().includes(catLower))
+        );
+        console.log(`After category filter: ${results.length} matches`);
+    }
+    
+    // Begrens resultater
+    results = results.slice(0, maxProducts);
+    
+    await Actor.pushData(results);
+    console.log(`\n=== DONE ===`);
+    console.log(`Returned ${results.length} products from cache`);
+    await Actor.exit();
+}
+
+// Last eksisterende cache for updateOnly-modus
+let existingUrls = new Set();
+if (updateOnly) {
+    const cachedProducts = await kvStore.getValue('all-products') || [];
+    existingUrls = new Set(cachedProducts.map(p => p.url));
+    console.log(`Loaded ${existingUrls.size} existing URLs from cache`);
+}
 
 // Steg 1: Hent alle produkt-URLer fra sitemaps
 const sitemapUrls = Array.from({ length: 25 }, (_, i) => 
@@ -90,9 +148,22 @@ if (category) {
     console.log(`After category filter "${category}": ${filteredUrls.length} URLs`);
 }
 
-// Begrens antall
-const urlsToScrape = filteredUrls.slice(0, maxProducts);
-console.log(`Will scrape ${urlsToScrape.length} products`);
+// For fullIndex, bruk alle URLer
+let urlsToScrape;
+if (fullIndex) {
+    urlsToScrape = filteredUrls;
+    console.log(`FULL INDEX: Will scrape all ${urlsToScrape.length} products`);
+} else {
+    urlsToScrape = filteredUrls.slice(0, maxProducts);
+    console.log(`Will scrape ${urlsToScrape.length} products`);
+}
+
+// For updateOnly, filtrer ut allerede scrapede URLer
+if (updateOnly && existingUrls.size > 0) {
+    const beforeCount = urlsToScrape.length;
+    urlsToScrape = urlsToScrape.filter(url => !existingUrls.has(url));
+    console.log(`UPDATE MODE: Filtered from ${beforeCount} to ${urlsToScrape.length} new URLs`);
+}
 
 // Steg 3: Scrape hver produktside
 const results = [];
@@ -261,8 +332,36 @@ if (urlsToScrape.length > 0) {
     await crawler.run(urlsToScrape);
 }
 
-// Steg 4: Lagre resultater
+// Steg 4: Lagre resultater til Dataset
 await Actor.pushData(results);
+
+// Steg 5: Oppdater cache i Key-Value Store
+if (results.length > 0) {
+    console.log('\nUpdating cache...');
+    
+    // Last eksisterende cache
+    let cachedProducts = await kvStore.getValue('all-products') || [];
+    const cacheMap = new Map(cachedProducts.map(p => [p.url, p]));
+    
+    // Oppdater/legg til nye produkter
+    for (const product of results) {
+        cacheMap.set(product.url, product);
+    }
+    
+    // Konverter tilbake til array
+    cachedProducts = Array.from(cacheMap.values());
+    
+    // Lagre oppdatert cache
+    await kvStore.setValue('all-products', cachedProducts);
+    console.log(`Cache updated: ${cachedProducts.length} total products`);
+    
+    // Lagre metadata
+    await kvStore.setValue('cache-metadata', {
+        lastUpdated: new Date().toISOString(),
+        totalProducts: cachedProducts.length,
+        lastRunScraped: results.length,
+    });
+}
 
 console.log(`\n=== DONE ===`);
 console.log(`Scraped ${results.length} products successfully`);
