@@ -4,10 +4,20 @@ import { parseStringPromise } from 'xml2js';
 
 await Actor.init();
 
-const input = await Actor.getInput() ?? {};
+let input = await Actor.getInput() ?? {};
+
+// Håndter tilfelle der input er en streng (feil format fra UI)
+if (typeof input === 'string') {
+    try {
+        input = JSON.parse(input);
+    } catch (e) {
+        input = { keyword: input };
+    }
+}
+
 const { keyword = '', maxProducts = 50, category = '' } = input;
 
-console.log(`Starting Jula scraper - keyword: "${keyword}", max: ${maxProducts}`);
+console.log(`Starting Jula scraper - keyword: "${keyword}", maxProducts: ${maxProducts}, category: "${category}"`);
 
 // Steg 1: Hent alle produkt-URLer fra sitemaps
 const sitemapUrls = Array.from({ length: 25 }, (_, i) => 
@@ -50,18 +60,34 @@ console.log(`Total product URLs found: ${allProductUrls.length}`);
 let filteredUrls = allProductUrls;
 
 if (keyword) {
-    const kw = keyword.toLowerCase().replace(/\s+/g, '-');
-    filteredUrls = filteredUrls.filter(url => 
-        url.toLowerCase().includes(kw)
-    );
-    console.log(`After keyword filter: ${filteredUrls.length}`);
+    // Støtt flere søkevarianter: "veggfeste" matcher "veggfester", "veggfeste-", etc.
+    const kwLower = keyword.toLowerCase().trim();
+    const kwVariants = [
+        kwLower,
+        kwLower.replace(/\s+/g, '-'),
+        kwLower.replace(/\s+/g, ''),
+        kwLower + 'r',  // flertall
+        kwLower + 'er', // flertall
+    ];
+    
+    filteredUrls = filteredUrls.filter(url => {
+        const urlLower = url.toLowerCase();
+        return kwVariants.some(kw => urlLower.includes(kw));
+    });
+    console.log(`After keyword filter "${keyword}": ${filteredUrls.length} URLs`);
+    
+    // Vis noen eksempler
+    if (filteredUrls.length > 0) {
+        console.log(`  Examples: ${filteredUrls.slice(0, 3).join('\n            ')}`);
+    }
 }
 
 if (category) {
+    const catLower = category.toLowerCase().trim();
     filteredUrls = filteredUrls.filter(url => 
-        url.toLowerCase().includes(category.toLowerCase())
+        url.toLowerCase().includes(catLower)
     );
-    console.log(`After category filter: ${filteredUrls.length}`);
+    console.log(`After category filter "${category}": ${filteredUrls.length} URLs`);
 }
 
 // Begrens antall
