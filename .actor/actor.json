@@ -15,7 +15,7 @@
                 "products": {
                     "title": "Products",
                     "transformation": {
-                        "fields": ["name", "brand", "price", "url", "articleNumber"]
+                        "fields": ["name", "brand", "price", "priceExVat", "articleNumber", "ean", "categories", "inStock", "availableInStores", "rating", "reviewCount", "url"]
                     }
                 }
             }

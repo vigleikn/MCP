@@ -76,53 +76,144 @@ const crawler = new CheerioCrawler({
     
     async requestHandler({ request, $ }) {
         try {
+            // Grunnleggende info
             const name = $('h1').first().text().trim();
             const brand = $('a[href*="/varemerker/"]').first().text().trim();
             
-            // Pris - prøv flere selektorer
+            // Pris
             let price = null;
-            const priceText = $('[class*="price"]').first().text() || 
-                             $('[data-price]').attr('data-price') || '';
+            let priceExVat = null;
+            const priceText = $('[class*="price"]').first().text() || '';
             const priceMatch = priceText.match(/(\d[\d\s]*)/);
             if (priceMatch) {
                 price = parseInt(priceMatch[1].replace(/\s/g, ''));
+            }
+            const exVatMatch = $('body').text().match(/Eks\.?\s*mva\.?[:\s]*([\d\s,]+)/i);
+            if (exVatMatch) {
+                priceExVat = parseFloat(exVatMatch[1].replace(/\s/g, '').replace(',', '.'));
             }
             
             // Artikelnummer
             const articleMatch = $('body').text().match(/Artikkelnr[:\s]*(\d+)/i);
             const articleNumber = articleMatch ? articleMatch[1] : null;
             
-            // VESA-størrelser
-            const bodyText = $('body').text();
-            const vesaMatches = bodyText.match(/(\d{2,3})\s*x\s*(\d{2,3})\s*mm/gi) || [];
-            const vesaSizes = [...new Set(vesaMatches)];
+            // EAN/Strekkode
+            const eanMatch = $('body').text().match(/EAN[:\s]*(\d{13})/i);
+            const ean = eanMatch ? eanMatch[1] : null;
             
-            // Produktbeskrivelse
-            const description = $('[class*="description"]').first().text().trim().slice(0, 500);
+            // Kategori fra URL
+            const urlParts = request.url.split('/catalog/')[1]?.split('/') || [];
+            const categories = urlParts.slice(0, -1).map(c => c.replace(/-/g, ' '));
             
-            // Spesifikasjoner
-            const specs = {};
-            $('dt, th').each((_, el) => {
-                const key = $(el).text().trim();
-                const value = $(el).next('dd, td').text().trim();
-                if (key && value && key.length < 50) specs[key] = value;
+            // Produktbeskrivelse - hent alt
+            const descriptionParts = [];
+            $('p').each((_, el) => {
+                const text = $(el).text().trim();
+                if (text.length > 20 && text.length < 2000) {
+                    descriptionParts.push(text);
+                }
+            });
+            const description = descriptionParts.join('\n\n');
+            
+            // Produktegenskaper/features (bullet points)
+            const features = [];
+            $('li').each((_, el) => {
+                const text = $(el).text().trim();
+                if (text.length > 5 && text.length < 200 && !text.includes('http')) {
+                    features.push(text);
+                }
             });
             
-            // Bilde-URL
-            const imageUrl = $('img[src*="catalog"]').first().attr('src') || 
-                            $('meta[property="og:image"]').attr('content') || null;
+            // Alle spesifikasjoner
+            const specs = {};
+            
+            // Fra definition lists
+            $('dl').each((_, dl) => {
+                $(dl).find('dt').each((i, dt) => {
+                    const key = $(dt).text().trim();
+                    const value = $(dt).next('dd').text().trim();
+                    if (key && value && key.length < 100) {
+                        specs[key] = value;
+                    }
+                });
+            });
+            
+            // Fra tabeller
+            $('table tr').each((_, tr) => {
+                const cells = $(tr).find('td, th');
+                if (cells.length >= 2) {
+                    const key = $(cells[0]).text().trim();
+                    const value = $(cells[1]).text().trim();
+                    if (key && value && key.length < 100) {
+                        specs[key] = value;
+                    }
+                }
+            });
+            
+            // Bilder - hent alle
+            const images = [];
+            $('img').each((_, img) => {
+                const src = $(img).attr('src') || $(img).attr('data-src');
+                if (src && (src.includes('product') || src.includes('catalog') || src.includes('jula'))) {
+                    if (!images.includes(src) && !src.includes('logo') && !src.includes('icon')) {
+                        images.push(src);
+                    }
+                }
+            });
+            
+            // OG meta tags
+            const ogImage = $('meta[property="og:image"]').attr('content');
+            if (ogImage && !images.includes(ogImage)) {
+                images.unshift(ogImage);
+            }
+            
+            // Lagerstatus
+            const stockText = $('body').text();
+            const inStock = stockText.includes('På lager') || stockText.includes('nettlager');
+            const stockMatch = stockText.match(/(\d+)\s*varehus/i);
+            const availableInStores = stockMatch ? parseInt(stockMatch[1]) : null;
+            
+            // Vurdering/rating
+            const ratingMatch = $('body').text().match(/([\d,\.]+)\s*stjerner?/i);
+            const rating = ratingMatch ? parseFloat(ratingMatch[1].replace(',', '.')) : null;
+            const reviewMatch = $('body').text().match(/(\d+)\s*(?:anmeldelse|review)/i);
+            const reviewCount = reviewMatch ? parseInt(reviewMatch[1]) : null;
             
             const product = {
+                // Identifikasjon
                 name,
-                brand,
-                price,
-                currency: 'NOK',
                 articleNumber,
+                ean,
+                brand,
+                
+                // Priser
+                price,
+                priceExVat,
+                currency: 'NOK',
+                
+                // Kategorisering
+                categories,
+                
+                // Beskrivelser
                 description: description || null,
-                vesaSizes: vesaSizes.length > 0 ? vesaSizes : null,
-                imageUrl,
-                url: request.url,
+                features: features.length > 0 ? [...new Set(features)].slice(0, 20) : null,
+                
+                // Spesifikasjoner
                 specs: Object.keys(specs).length > 0 ? specs : null,
+                
+                // Media
+                images: images.length > 0 ? images.slice(0, 10) : null,
+                
+                // Tilgjengelighet
+                inStock,
+                availableInStores,
+                
+                // Vurderinger
+                rating,
+                reviewCount,
+                
+                // Metadata
+                url: request.url,
                 source: 'Jula',
                 scrapedAt: new Date().toISOString()
             };
